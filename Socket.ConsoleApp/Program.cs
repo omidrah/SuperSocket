@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ServiceProcess;
+using System.Threading;
 using Socket.Domain.Infra;
 using SuperSocket.SocketBase;
 using SuperSocket.SocketBase.Config;
 using SuperSocket.SocketBase.Protocol;
 using SuperSocket.SocketEngine;
+using SuperSocket.WebSocket;
 
 namespace Socket.ConsoleApp
 {
@@ -12,40 +15,51 @@ namespace Socket.ConsoleApp
     {
         private static MyAppServer appServer;
 
-        private static void Main(string[] args)
+        static void Main(string[] args)
         {
-            appServer = new MyAppServer();
-
-            var root = new RootConfig();
-            var server = new ServerConfig();
-            var factory = new SocketServerFactory();
-
-            server.Name = "SuperWebSocket";
-            server.ServerTypeName = "WebSocketService";
-            server.Ip = "Any";
-            server.Port = 3333;
-            server.MaxRequestLength = 1024*1000*1000;
-            server.ReceiveBufferSize = 1048576;
-            server.MaxConnectionNumber = 100;
-            server.SendingQueueSize = 3000;
-            server.TextEncoding = "UTF-8";
-
-            appServer.NewRequestReceived += appServer_NewRequestReceived;
-
-            appServer.Setup(root, server, factory);
-
-            appServer.Start();
-
-            Console.WriteLine("...open another command prompt and run: telnet 127.0.0.1 3333");
+            WebSocketServer server = new WebSocketServer();
+            server.NewSessionConnected += server_NewSessionConnected;
+            server.NewMessageReceived += server_NewMessageReceived;
+            server.SessionClosed += server_SessionClosed;
+            try
+            {
+                server.Setup("127.0.0.1", 40001);//Set port
+                server.Start();//Open monitoring
+                PushMsg();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
             Console.ReadKey();
         }
 
-        private static void appServer_NewRequestReceived(AppSession session, StringRequestInfo requestInfo)
+        static void PushMsg()
         {
-            //Checks are sent back message
-            var result = session.TrySend("message received");
+            Thread.Sleep(1000);
+            try { sessionList.ForEach(o => { o.Send("Test message push"); }); }
+            catch (Exception ex) { }
+            PushMsg();
+        }
 
-            session.Close(CloseReason.ClientClosing);
+        public static List<WebSocketSession> sessionList = new List<WebSocketSession>();
+
+        static void server_SessionClosed(WebSocketSession session, SuperSocket.SocketBase.CloseReason value)
+        {
+            sessionList.Remove(session);
+            Console.WriteLine(session.Origin);
+        }
+
+        static void server_NewMessageReceived(WebSocketSession session, string value)
+        {
+            Console.WriteLine(value);
+            session.Send(value);
+        }
+
+        static void server_NewSessionConnected(WebSocketSession session)
+        {
+            sessionList.Add(session);
+            Console.WriteLine(session.Origin);
         }
     }
 }
